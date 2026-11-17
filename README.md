@@ -1,54 +1,72 @@
 # BottleneckTest
 
-[![CI](https://github.com/kapildhinwa2010-dev/BottleneckTest/actions/workflows/ci.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/BottleneckTest/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/kapildhinwa2010-dev/BottleneckTest/actions/workflows/codeql.yml/badge.svg)](https://github.com/kapildhinwa2010-dev/BottleneckTest/actions/workflows/codeql.yml)
+BottleneckTest is a small Python library for inspecting the singular-value structure of two-dimensional weight matrices. It reports basic matrix statistics and ranks named matrices by effective rank as a simple low-rank bottleneck heuristic. It does not load or inspect framework model objects, and its ranking alone does not establish a training or accuracy bottleneck.
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+The project metadata identifies this as version `0.1.0`. It currently consists of a single Python module and a focused test suite; treat it as a lightweight analysis utility rather than a complete model-analysis toolkit.
 
-Detect low-rank bottlenecks in stacked weight layers via singular-value spectra.
+## Requirements and installation
 
-**Part of the [Kapildhinwa2010-dev Toolkit](https://github.com/kapildhinwa2010-dev/Kapildhinwa2010-dev).**
+The package requires Python 3.9 or newer and NumPy 1.24 or newer. From a checkout, install it with:
 
-## What it does
+```bash
+python -m pip install .
+```
 
-Given a dict of 2-D weight matrices, analyze_model() reports per layer:
-singular spectrum, effective rank (smallest k covering 99% of spectral
-energy), condition number (inf when numerically singular), and norms.
-find_bottlenecks() ranks layers by smallest effective rank. This is the
-canonical spectral-base module of the toolkit; DistributionShift
-extends it with between-sets spectrum comparison.
+To install the declared runtime and test dependencies directly instead, use:
 
-## Install
+```bash
+python -m pip install -r requirements.txt
+```
 
-    pip install -r requirements.txt
+The latter installs NumPy and pytest. The project is packaged from `pyproject.toml` as `bottlenecktest`.
 
-## Quick start
+## Usage
 
-    from bottlenecktest import analyze_model, find_bottlenecks
+Pass a mapping from layer names to two-dimensional NumPy-compatible arrays:
 
-    reports = analyze_model({"a": np.eye(16), "b": low_rank})
-    print(find_bottlenecks(reports, top_k=1))
+```python
+import numpy as np
+from bottlenecktest import analyze_model, find_bottlenecks
+
+layers = {
+    "projection": np.eye(4),
+    "rank_one": np.ones((4, 4)),
+}
+reports = analyze_model(layers)
+print(reports["projection"])
+print(find_bottlenecks(reports, top_k=1))
+```
+
+`analyze_model` returns one report per input name. Each report contains the matrix `shape`, `frobenius_norm`, `spectral_norm`, `condition_number`, and `effective_rank`. `find_bottlenecks` returns layer names ordered by ascending reported effective rank (ties are ordered by name).
 
 ## API
 
-- layer_spectrum(weights) - singular values, descending
-- effective_rank(weights, energy=0.99)
-- layer_report(weights) - shape, norms, condition_number, effective_rank
-- analyze_model(layers) / find_bottlenecks(reports, top_k=1)
+- `layer_spectrum(weights)` converts its input to `float64` and returns its singular values in descending order. The input must be two-dimensional.
+- `effective_rank(weights, energy=0.99)` returns the smallest number of leading singular values whose cumulative **sum** reaches the specified fraction of the sum of all singular values. The parameter must be in `(0, 1]`. Despite the parameter name, this is not a squared-singular-value or Frobenius-energy threshold. A zero matrix returns rank `1`.
+- `layer_report(weights)` returns the shape, Frobenius norm, spectral norm, condition number, and default effective rank for a non-empty two-dimensional matrix. The condition number is reported as infinity when the smallest singular value is at or below a scale-dependent machine-precision threshold.
+- `analyze_model(layers)` applies `layer_report` to each value in a non-empty mapping of names to matrices.
+- `find_bottlenecks(reports, top_k=1)` returns up to `top_k` names with the smallest effective ranks. Empty reports produce an empty list; `top_k` must be at least one for non-empty reports.
 
-## Honest results and limitations
+## Tests and CI
 
-- "Bottleneck" here means low effective rank of the weight matrix,
-  which correlates with - but does not prove - a training bottleneck.
-  No accuracy or gradient measurement is included.
-- Effective rank uses a fixed 99% energy cutoff; spectra with slow
-  decay get high ranks even when visibly compressible.
-- condition_number is inf for numerically singular matrices rather
-  than a huge finite number; handle it in downstream code.
-- Full SVD per layer: O(min(m,n)^2 * max(m,n)) time. Fine for toy
-  scales, slow for very large layers.
+On the checked-out repository commit, the local test suite completed with **11 passed** on Python 3.12.3. A separate API smoke test also passed. A wheel build from a temporary copy of the source and project metadata succeeded. These are local checks; no hosted GitHub Actions run or result is asserted here.
+
+The CI workflow is configured to run pytest, compile the module and tests, and perform a small import/report smoke check on Python 3.10, 3.11, and 3.12. A separate CodeQL workflow is configured for Python analysis; its configured presence is not evidence of a particular analysis result.
+
+Run the test suite locally with:
+
+```bash
+python -m pytest -q
+```
+
+## Scope and limitations
+
+- The input is a mapping of matrix names to arrays; there is no integration for loading neural-network checkpoints or extracting weights from a framework model.
+- “Bottleneck” means only a low effective rank under this module's singular-value sum cutoff. The module does not measure gradients, training dynamics, downstream accuracy, or causal impact on model performance.
+- The effective-rank default is a fixed 99% cumulative singular-value-sum threshold. Different choices of threshold can change rankings, and this metric is not the conventional squared-spectrum energy fraction.
+- Reports require non-empty two-dimensional matrices. The implementation computes an SVD for each matrix, which may be expensive for large layers; no performance benchmark or scale claim is provided.
+- The repository contains unit tests, but no benchmark dataset, measured performance results, or empirical research findings.
 
 ## License
 
-MIT - see [LICENSE](LICENSE).
+The repository includes an MIT License, copyright (c) 2026 Kapildhinwa2010-dev. See [LICENSE](LICENSE) for the complete terms.
